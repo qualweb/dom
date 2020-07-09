@@ -39,6 +39,7 @@
     "typescript": "^3.9.6"
   },
   "dependencies": {
+    "playwright": "^1.2.0",
     "node-fetch": "^2.6.0",
     "domutils": "^2.0.0",
     "htmlparser-to-html": "0.0.6",

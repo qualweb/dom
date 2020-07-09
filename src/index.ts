@@ -1,9 +1,9 @@
 import {
+  chromium, firefox, webkit,
   Browser,
   Page,
-  Viewport,
   ElementHandle
-} from 'puppeteer';
+} from 'playwright';
 import {
   QualwebOptions,
   SourceHtml,
@@ -35,10 +35,10 @@ class Dom {
 
   public async getDOM(browser: Browser, options: QualwebOptions, url: string, html: string): Promise<PageData> {
     try {
-      this.page = await browser.newPage();
-      await this.page.setBypassCSP(true);
-      await this.setPageViewport(options.viewport);
-
+      const browser = await chromium.launch({ headless: true });
+      let processedOptions = await this.processOptions(options.viewport);
+      const context = await browser.newContext({ userAgent: processedOptions["userAgent"], bypassCSP: true, viewport: { width: processedOptions["width"], height: processedOptions["height"] }, isMobile: processedOptions["isMobile"], hasTouch: processedOptions["hasTouch"] });
+      this.page = await context.newPage();
       let _sourceHtml = '';
 
       if (url) {
@@ -46,23 +46,23 @@ class Dom {
 
         const response = await this.page.goto(url, {
           timeout: 0,
-          waitUntil: ['networkidle2', 'domcontentloaded']
+          waitUntil: 'networkidle'
         });
-        
-        const sourceHTMLPuppeteer = await response?.text();
-        
+
+        const sourceHTMLPuppeteer = await response ?.text();
+
         if (this.isSVGorMath(sourceHTMLPuppeteer)) {
           this.page.close()
           this.page = await browser.newPage();
           await this.page.setContent('<!DOCTYPE html><html nonHTMLPage=true><body></body></html>', {
             timeout: 0,
-            waitUntil: ['networkidle2', 'domcontentloaded']
+            waitUntil: 'networkidle'
           });
         }
       } else {
         await this.page.setContent(html, {
           timeout: 0,
-          waitUntil: ['networkidle2', 'domcontentloaded']
+          waitUntil: 'networkidle'
         });
         _sourceHtml = await this.page.content();
 
@@ -71,7 +71,7 @@ class Dom {
           this.page = await browser.newPage();
           await this.page.setContent('<!DOCTYPE html><html nonHTMLPage=true><body></body></html>', {
             timeout: 0,
-            waitUntil: ['networkidle2', 'domcontentloaded']
+            waitUntil: 'networkidle'
           });
         }
       }
@@ -90,41 +90,46 @@ class Dom {
     await this.page.close();
   }
 
-  private async setPageViewport(options ? : PageOptions): Promise<void> {
+  private processOptions(options?: PageOptions): any {
+    let userAgent;
     if (options) {
       if (options.userAgent) {
-        await this.page.setUserAgent(options.userAgent);
+        userAgent = options.userAgent;
       } else if (options.mobile) {
-        await this.page.setUserAgent(DEFAULT_MOBILE_USER_AGENT);
+        userAgent = DEFAULT_MOBILE_USER_AGENT;
       } else {
-        await this.page.setUserAgent(DEFAULT_DESKTOP_USER_AGENT);
+        userAgent = DEFAULT_DESKTOP_USER_AGENT;
       }
 
-      const viewPort: Viewport = {
-        width: options.mobile ? DEFAULT_MOBILE_PAGE_VIEWPORT_WIDTH : DEFAULT_DESKTOP_PAGE_VIEWPORT_WIDTH,
-        height: options.mobile ? DEFAULT_MOBILE_PAGE_VIEWPORT_HEIGHT : DEFAULT_DESKTOP_PAGE_VIEWPORT_HEIGHT
+      let width = options.mobile ? DEFAULT_MOBILE_PAGE_VIEWPORT_WIDTH : DEFAULT_DESKTOP_PAGE_VIEWPORT_WIDTH;
+      let height = options.mobile ? DEFAULT_MOBILE_PAGE_VIEWPORT_HEIGHT : DEFAULT_DESKTOP_PAGE_VIEWPORT_HEIGHT;
+
+      if (options.resolution ?.width) {
+        width = options.resolution ?.width;
+      }
+      if (options.resolution ?.height) {
+        width = options.resolution ?.height;
+      }
+
+      let isMobile = !!options.mobile;
+      let isLandscape = options.landscape !== undefined ? options.landscape : width > height;
+      let hasTouch = !!options.mobile;
+
+      return {
+        width,
+        height,
+        isMobile,
+        hasTouch,
+        isLandscape
       };
-      
-      if (options.resolution?.width) {
-        viewPort.width = options.resolution.width;
-      }
-      if (options.resolution?.height) {
-        viewPort.height = options.resolution.height;
-      }
-
-      viewPort.isMobile = !!options.mobile;
-      viewPort.isLandscape = options.landscape !== undefined ? options.landscape : viewPort.width > viewPort.height;
-      viewPort.hasTouch = !!options.mobile;
-
-      await this.page.setViewport(viewPort);
     } else {
-      await this.page.setViewport({
+      return {
         width: DEFAULT_DESKTOP_PAGE_VIEWPORT_WIDTH,
         height: DEFAULT_DESKTOP_PAGE_VIEWPORT_HEIGHT,
         isMobile: false,
         hasTouch: false,
         isLandscape: true
-      });
+      };
     }
   }
 
@@ -153,7 +158,7 @@ class Dom {
   }
 
   private parseHTML(html: string): Node[] {
-    const handler = new DomHandler(() => {}, {
+    const handler = new DomHandler(() => { }, {
       withStartIndices: true,
       withEndIndices: true
     });
@@ -245,7 +250,7 @@ class Dom {
   }
 
   private isSVGorMath(content?: string): boolean {
-    return !!(content?.trim().startsWith('<math') || content?.trim().startsWith('<svg'));
+    return !!(content ?.trim().startsWith('<math') || content ?.trim().startsWith('<svg'));
   }
 }
 
